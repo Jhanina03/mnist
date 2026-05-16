@@ -1,15 +1,19 @@
-
 # =============================================================================
 #  RED NEURONAL MANUAL - CLASIFICACIÓN MNIST (10 DÍGITOS)
 #  Implementación del ciclo de entrenamiento matemáticamente explícito
 #  Autor: Paso a paso con GradientTape, Backpropagation y Optimización manual
 # =============================================================================
 
+import os
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # Suprime warnings y logs C++ de TF en consola
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"  # Suprime mensajes de oneDNN
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from tensorflow import keras
+
 from sklearn.model_selection import train_test_split
 
 # Fijamos semillas para reproducibilidad total en ambos frameworks
@@ -35,8 +39,8 @@ print("=" * 60)
 # Una red densa (Dense/Fully Connected) espera vectores 1D.
 # Transformamos cada imagen 28x28 en un vector de 784 características.
 # Matemáticamente: R^(28×28) → R^784
-X_all = X_train_raw.reshape(-1, 784)   # (60000, 784)
-y_all = y_train_raw                     # (60000,) etiquetas enteras 0-9
+X_all = X_train_raw.reshape(-1, 784)  # (60000, 784)
+y_all = y_train_raw  # (60000,) etiquetas enteras 0-9
 
 # --- Normalización ---
 # Dividimos entre 255.0 para que cada píxel quede en el rango [0, 1].
@@ -63,9 +67,9 @@ print("=" * 60)
 X_train, X_test, y_train, y_test = train_test_split(
     X_all,
     y_all,
-    test_size=0.2,       # 20% para test, 80% para entrenamiento
-    random_state=42,     # Semilla para reproducibilidad
-    stratify=y_all       # ← CLAVE: mantiene proporciones de cada clase
+    test_size=0.2,  # 20% para test, 80% para entrenamiento
+    random_state=42,  # Semilla para reproducibilidad
+    stratify=y_all,  # ← CLAVE: mantiene proporciones de cada clase
 )
 
 # Verificamos la distribución por clase en ambas particiones
@@ -74,7 +78,7 @@ print(f"  Tamaño prueba        : {X_test.shape[0]} muestras")
 print("\n  Distribución de clases (las 10 clases):")
 for clase in range(10):
     train_pct = np.mean(y_train == clase) * 100
-    test_pct  = np.mean(y_test  == clase) * 100
+    test_pct = np.mean(y_test == clase) * 100
     print(f"    Dígito {clase}: train={train_pct:.2f}%  test={test_pct:.2f}%")
 print()
 
@@ -97,24 +101,41 @@ print("=" * 60)
 print("PASO 3: Definiendo la arquitectura de la red neuronal...")
 print("=" * 60)
 
-model = keras.Sequential([
-    # Capa de entrada: declara explícitamente la forma del vector de entrada (784 píxeles)
-    # En Keras 3.x, input_shape ya NO se pasa a Dense; se usa keras.Input como primera capa.
-    keras.Input(shape=(784,), name="entrada"),
-    # Capa oculta 1: 784 → 128, activación ReLU
-    keras.layers.Dense(128, activation="relu", name="capa_oculta_1"),
-    # Capa oculta 2: 128 → 64, activación ReLU
-    keras.layers.Dense(64, activation="relu", name="capa_oculta_2"),
-    # Capa de salida: 64 → 10, activación Softmax
-    keras.layers.Dense(10, activation="softmax", name="capa_salida")
-])
+model = keras.Sequential(
+    [
+        # Capa de entrada: declara explícitamente la forma del vector de entrada (784 píxeles)
+        # En Keras 3.x, input_shape ya NO se pasa a Dense; se usa keras.Input como primera capa.
+        keras.Input(shape=(784,), name="entrada"),
+        # Capa oculta 1: 784 → 128, activación ReLU
+        keras.layers.Dense(128, activation="relu", name="capa_oculta_1"),
+        # Capa oculta 2: 128 → 64, activación ReLU
+        keras.layers.Dense(64, activation="relu", name="capa_oculta_2"),
+        # Capa de salida: 64 → 10, activación Softmax
+        keras.layers.Dense(10, activation="softmax", name="capa_salida"),
+    ]
+)
 
 # Con keras.Input declarado, el modelo ya está completamente construido
 # y los pesos ya están inicializados. No se necesita forward pass adicional.
 
-print(model.summary())
-print(f"\n  Total de parámetros entrenables: "
-      f"{sum(tf.size(w).numpy() for w in model.trainable_variables)}")
+# Imprimimos una tabla manual de la arquitectura para evitar bugs visuales de model.summary()
+print("  Resumen de la Arquitectura de la Red:")
+print("  ---------------------------------------------------------")
+print("  Capa (Tipo)             Output Shape           Param #")
+print("  ---------------------------------------------------------")
+for layer in model.layers:
+    nombre = layer.name
+    try:
+        shape = str(layer.output.shape)
+    except AttributeError:
+        shape = f"(None, {layer.units})" if hasattr(layer, "units") else "N/A"
+    params = layer.count_params()
+    print(f"  {nombre:22}  {shape:20}   {params:,}")
+print("  ---------------------------------------------------------")
+print(
+    f"  Total de parámetros entrenables: "
+    f"{sum(tf.size(w).numpy() for w in model.trainable_variables):,}"
+)
 print()
 
 
@@ -129,9 +150,9 @@ print("PASO 4: Iniciando ciclo de entrenamiento manual...")
 print("=" * 60)
 
 # ── Hiperparámetros ──────────────────────────────────────────────────────────
-EPOCHS      = 15       # Número de épocas (pasadas completas sobre los datos)
-BATCH_SIZE  = 128      # Tamaño del mini-batch para SGD estocástico
-LR          = 0.01     # Learning Rate (tasa de aprendizaje) η
+EPOCHS = 15  # Número de épocas (pasadas completas sobre los datos)
+BATCH_SIZE = 128  # Tamaño del mini-batch para SGD estocástico
+LR = 0.01  # Learning Rate (tasa de aprendizaje) η
 
 # ── Optimizador básico (SGD puro) ────────────────────────────────────────────
 # Usamos tf.keras.optimizers.SGD solo para aplicar los gradientes.
@@ -146,6 +167,7 @@ optimizer = keras.optimizers.SGD(learning_rate=LR)
 # donde y_i es la etiqueta one-hot y ŷ_i es la probabilidad predicha (Softmax).
 # Equivalentemente con índices de clase (sparse):
 #   L = -log(ŷ_{clase_real})
+
 
 def calcular_perdida(y_real, y_pred):
     """
@@ -175,29 +197,28 @@ def calcular_exactitud(y_real, y_pred):
     Toma el argmax de las probabilidades Softmax como clase predicha.
     """
     predicciones = tf.argmax(y_pred, axis=1, output_type=tf.int32)
-    y_real_int   = tf.cast(y_real, tf.int32)
-    correctas    = tf.equal(predicciones, y_real_int)
+    y_real_int = tf.cast(y_real, tf.int32)
+    correctas = tf.equal(predicciones, y_real_int)
     return tf.reduce_mean(tf.cast(correctas, tf.float32))
 
 
 # ── Conversión a tensores TF ─────────────────────────────────────────────────
 X_train_tf = tf.constant(X_train, dtype=tf.float32)
 y_train_tf = tf.constant(y_train, dtype=tf.int32)
-X_test_tf  = tf.constant(X_test,  dtype=tf.float32)
-y_test_tf  = tf.constant(y_test,  dtype=tf.int32)
+X_test_tf = tf.constant(X_test, dtype=tf.float32)
+y_test_tf = tf.constant(y_test, dtype=tf.int32)
 
 n_muestras = X_train_tf.shape[0]
-n_batches  = n_muestras // BATCH_SIZE
+n_batches = n_muestras // BATCH_SIZE
 
-historial_perdida       = []   # Loss en entrenamiento por época
-historial_exactitud     = []   # Accuracy en entrenamiento por época
-historial_perdida_test  = []   # Loss en test por época (para detectar overfitting)
+historial_perdida = []  # Loss en entrenamiento por época
+historial_exactitud = []  # Accuracy en entrenamiento por época
+historial_perdida_test = []  # Loss en test por época (para detectar overfitting)
 historial_exactitud_test = []  # Accuracy en test por época
 
 # ── Ciclo Principal de Épocas ────────────────────────────────────────────────
 for epoca in range(EPOCHS):
-
-    perdidas_epoca  = []
+    perdidas_epoca = []
     exactitud_epoca = []
 
     # Permutamos los índices para aleatorizar el orden de los batches
@@ -205,12 +226,11 @@ for epoca in range(EPOCHS):
 
     # ── Ciclo sobre Mini-Batches ─────────────────────────────────────────────
     for b in range(n_batches):
-
         # Seleccionamos los índices del batch actual
         idx_batch = indices[b * BATCH_SIZE : (b + 1) * BATCH_SIZE]
 
-        X_batch = tf.gather(X_train_tf, idx_batch)   # (BATCH_SIZE, 784)
-        y_batch = tf.gather(y_train_tf, idx_batch)   # (BATCH_SIZE,)
+        X_batch = tf.gather(X_train_tf, idx_batch)  # (BATCH_SIZE, 784)
+        y_batch = tf.gather(y_train_tf, idx_batch)  # (BATCH_SIZE,)
 
         # ================================================================
         # FORWARD PASS + CÁLCULO DE GRADIENTES con tf.GradientTape
@@ -237,14 +257,13 @@ for epoca in range(EPOCHS):
         #     ∂L/∂W_k = δ_k · a_{k-1}^T                 (gradiente de pesos)
 
         with tf.GradientTape() as tape:
-
             # ── FORWARD PASS ──────────────────────────────────────────────
             # Propagamos el batch a través de todas las capas del modelo.
             # Para cada capa Dense: a = f(W·x + b)
             #   Capa 1: a1 = ReLU(W1·X + b1)      → (BATCH, 128)
             #   Capa 2: a2 = ReLU(W2·a1 + b2)     → (BATCH, 64)
             #   Salida: ŷ  = Softmax(W3·a2 + b3)  → (BATCH, 10)
-            y_pred = model(X_batch, training=True)   # ŷ: probabilidades Softmax
+            y_pred = model(X_batch, training=True)  # ŷ: probabilidades Softmax
 
             # ── CÁLCULO DE PÉRDIDA (Categorical Cross-Entropy) ───────────
             # L = -(1/N) Σ log(ŷ_{n, clase_n})
@@ -279,22 +298,26 @@ for epoca in range(EPOCHS):
         exactitud_epoca.append(exactitud.numpy())
 
     # ── Evaluación al final de cada época ───────────────────────────────────
-    perdida_media   = np.mean(perdidas_epoca)
+    perdida_media = np.mean(perdidas_epoca)
     exactitud_media = np.mean(exactitud_epoca)
 
     # Evaluamos en el conjunto de prueba (sin actualizar gradientes)
-    y_pred_test  = model(X_test_tf, training=False)
+    y_pred_test = model(X_test_tf, training=False)
     perdida_test = calcular_perdida(y_test_tf, y_pred_test).numpy()
     exactitud_test = calcular_exactitud(y_test_tf, y_pred_test).numpy()
 
     historial_perdida.append(perdida_media)
     historial_exactitud.append(exactitud_media)
-    historial_perdida_test.append(perdida_test)       # ← datos REALES del test de esta época
-    historial_exactitud_test.append(exactitud_test)   # ← datos REALES del test de esta época
+    historial_perdida_test.append(perdida_test)  # ← datos REALES del test de esta época
+    historial_exactitud_test.append(
+        exactitud_test
+    )  # ← datos REALES del test de esta época
 
-    print(f"  Época {epoca+1:02d}/{EPOCHS} | "
-          f"Loss Train: {perdida_media:.4f} | Acc Train: {exactitud_media*100:.2f}% | "
-          f"Loss Test: {perdida_test:.4f}  | Acc Test: {exactitud_test*100:.2f}%")
+    print(
+        f"  Época {epoca + 1:02d}/{EPOCHS} | "
+        f"Loss Train: {perdida_media:.4f} | Acc Train: {exactitud_media * 100:.2f}% | "
+        f"Loss Test: {perdida_test:.4f}  | Acc Test: {exactitud_test * 100:.2f}%"
+    )
 
 
 # ===========================================================================
@@ -304,9 +327,9 @@ print("\n" + "=" * 60)
 print("EVALUACIÓN FINAL DEL MODELO")
 print("=" * 60)
 
-y_pred_final   = model(X_test_tf, training=False)
+y_pred_final = model.predict(X_test_tf)
 exactitud_final = calcular_exactitud(y_test_tf, y_pred_final).numpy()
-perdida_final   = calcular_perdida(y_test_tf, y_pred_final).numpy()
+perdida_final = calcular_perdida(y_test_tf, y_pred_final).numpy()
 
 print(f"  Loss final en Test  : {perdida_final:.4f}")
 print(f"  Exactitud en Test   : {exactitud_final * 100:.2f}%\n")
@@ -319,10 +342,10 @@ print(f"  Exactitud en Test   : {exactitud_final * 100:.2f}%\n")
 print("  Recall por clase (dígito):")
 predicciones_finales = tf.argmax(y_pred_final, axis=1).numpy()
 for clase in range(10):
-    mask = (y_test == clase)
+    mask = y_test == clase
     if mask.sum() > 0:
         recall_clase = np.mean(predicciones_finales[mask] == clase)
-        print(f"    Dígito {clase}: {recall_clase*100:.2f}%  ({mask.sum()} muestras)")
+        print(f"    Dígito {clase}: {recall_clase * 100:.2f}%  ({mask.sum()} muestras)")
 
 print("\n" + "=" * 60)
 print("  Entrenamiento manual completado.")
@@ -339,151 +362,174 @@ print("\n" + "=" * 60)
 print("  HISTORIAL DE ENTRENAMIENTO (Loss Train por época):")
 print("=" * 60)
 for i, (loss, acc) in enumerate(zip(historial_perdida, historial_exactitud), 1):
-    barra = "█" * int(acc * 30)  # Barra visual proporcional a la exactitud
-    print(f"  Época {i:02d}: Loss={loss:.4f}  Acc={acc*100:.2f}%  |{barra}")
+    barra = "#" * int(acc * 30)  # Barra visual proporcional a la exactitud
+    print(f"  Época {i:02d}: Loss={loss:.4f}  Acc={acc * 100:.2f}%  |{barra}")
 
-print(f"\n  Mejora total en Loss : {historial_perdida[0]:.4f} → {historial_perdida[-1]:.4f}")
-print(f"  Mejora total en Acc  : {historial_exactitud[0]*100:.2f}% → {historial_exactitud[-1]*100:.2f}%")
+print(
+    f"\n  Mejora total en Loss : {historial_perdida[0]:.4f} -> {historial_perdida[-1]:.4f}"
+)
+print(
+    f"  Mejora total en Acc  : {historial_exactitud[0] * 100:.2f}% -> {historial_exactitud[-1] * 100:.2f}%"
+)
 print("=" * 60)
 
 
 # ===========================================================================
-# PASO 5: VISUALIZACIÓN CON DATOS REALES DE LA RED
+# PASO 5: VISUALIZACIÓN EN TERMINAL CON ASCII ART Y EXPORTACIÓN DE IMÁGENES
 # ===========================================================================
-# TODOS los datos que se grafican vienen de las variables del entrenamiento:
-#   - historial_perdida / historial_exactitud     → del ciclo de épocas
-#   - historial_perdida_test / historial_exactitud_test → del ciclo de épocas
-#   - predicciones_finales                        → de tf.argmax sobre y_pred_final
-#   - y_test                                      → etiquetas reales del split
-#   - X_test                                      → imágenes reales del split
-
 print("\n" + "=" * 60)
-print("PASO 5: Generando gráficos con datos reales del modelo...")
+print("PASO 5: Generando visualizaciones...")
 print("=" * 60)
 
-epocas_eje = list(range(1, EPOCHS + 1))  # Eje X: [1, 2, ..., 15]
-
-# ============================================================
-# FIGURA 1: CURVAS DE APRENDIZAJE (Train vs Test)
-# ============================================================
-# Fuente: historial_perdida, historial_exactitud,
-#         historial_perdida_test, historial_exactitud_test
-# → Variables generadas durante el ciclo de épocas real.
-fig1, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-fig1.suptitle('Curvas de Aprendizaje — Red Neuronal MNIST',
-              fontsize=14, fontweight='bold')
-
-# Subplot izquierdo: Loss
-ax1.plot(epocas_eje, historial_perdida,      'o-', color='#E74C3C',
-         linewidth=2, markersize=5, label='Loss Train')
-ax1.plot(epocas_eje, historial_perdida_test, 's--', color='#E67E22',
-         linewidth=2, markersize=5, label='Loss Test')
-ax1.set_title('Pérdida (Categorical Cross-Entropy)', fontsize=12)
-ax1.set_xlabel('Época')
-ax1.set_ylabel('Loss  L = -(1/N)Σ log(ŷ_clase)')
-ax1.legend()
-ax1.grid(True, alpha=0.3)
-ax1.set_xticks(epocas_eje)
-
-# Subplot derecho: Accuracy
-ax2.plot(epocas_eje, [a * 100 for a in historial_exactitud],      'o-', color='#2ECC71',
-         linewidth=2, markersize=5, label='Accuracy Train')
-ax2.plot(epocas_eje, [a * 100 for a in historial_exactitud_test], 's--', color='#27AE60',
-         linewidth=2, markersize=5, label='Accuracy Test')
-ax2.set_title('Exactitud por Época', fontsize=12)
-ax2.set_xlabel('Época')
-ax2.set_ylabel('Accuracy (%)')
-ax2.legend()
-ax2.grid(True, alpha=0.3)
-ax2.set_xticks(epocas_eje)
-ax2.set_ylim([0, 100])
-
-plt.tight_layout()
-plt.savefig('curvas_aprendizaje.png', dpi=150, bbox_inches='tight')
-print("  ✔ Figura 1 guardada: curvas_aprendizaje.png")
-
-# ============================================================
-# FIGURA 2: MATRIZ DE CONFUSIÓN 10x10
-# ============================================================
-# Fuente: predicciones_finales (tf.argmax de y_pred_final)
-#         y_test (etiquetas reales del train_test_split)
-# → Muestra qué dígitos confunde la red (ej: 4↔9, 3↔8)
-
-# Construimos la matriz manualmente (sin sklearn.metrics, cumpliendo restricciones)
+# ---------------------------------------------------------------------------
+# PARTE A: VISUALIZACIÓN EN TERMINAL (TEXTO / ASCII)
+# ---------------------------------------------------------------------------
+print("\n--- Matriz de Confusión (Terminal) ---")
 num_clases = 10
 matriz_conf = np.zeros((num_clases, num_clases), dtype=int)
 for real, pred in zip(y_test, predicciones_finales):
-    matriz_conf[real][pred] += 1  # fila=real, columna=predicho
+    matriz_conf[real][pred] += 1
 
-fig2, ax3 = plt.subplots(figsize=(10, 8))
-im = ax3.imshow(matriz_conf, interpolation='nearest', cmap='Blues')
+header = "    " + "".join([f"{i:5d}" for i in range(num_clases)])
+print(header)
+print("   -" + "-----" * num_clases)
+
+for i in range(num_clases):
+    fila_str = "".join([f"{matriz_conf[i, j]:5d}" for j in range(num_clases)])
+    print(f"{i} | {fila_str}")
+
+# ---------------------------------------------------------------------------
+# PARTE A: MÉTRICAS FINALES Y RESUMEN (LOGS EN TERMINAL)
+# ---------------------------------------------------------------------------
+# Probabilidad de que salga bien: exactitud_final
+# Probabilidad de error testeo vs entrenamiento
+error_testeo = (1.0 - exactitud_final) * 100
+error_entrenamiento = (1.0 - historial_exactitud[-1]) * 100
+
+print("\n" + "=" * 60)
+print("  RESUMEN DE MÉTRICAS FINALES (EVALUACIÓN Y OVERFITTING)")
+print("=" * 60)
+print(f"  Probabilidad de éxito (Exactitud Testeo): {exactitud_final * 100:.2f}%")
+print(f"  Probabilidad de error (Testeo):           {error_testeo:.2f}%")
+print(f"  Probabilidad de error (Entrenamiento):    {error_entrenamiento:.2f}%")
+print(
+    f"  Diferencia de error (Brecha Test-Train):  {abs(error_testeo - error_entrenamiento):.2f}%"
+)
+print(f"  Pérdida (Loss) Testeo:                    {perdida_final:.4f}")
+print(f"  Pérdida (Loss) Entrenamiento:             {historial_perdida[-1]:.4f}")
+
+if abs(error_testeo - error_entrenamiento) < 3.0:
+    print(
+        "\n  -> Conclusión: La red generaliza bien, NO hay overfitting significativo."
+    )
+else:
+    print(
+        "\n  -> Conclusión: Hay una brecha alta entre train y test (Riesgo de Overfitting)."
+    )
+
+print("=" * 60)
+
+# ---------------------------------------------------------------------------
+# PARTE B: GENERACIÓN Y EXPORTACIÓN DE IMÁGENES (.PNG) EXTERNAS
+# ---------------------------------------------------------------------------
+print("\n--- Generando y guardando imágenes PNG externamente ---")
+epocas_eje = list(range(1, EPOCHS + 1))
+
+# FIGURA 1: CURVAS DE APRENDIZAJE
+fig1, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+fig1.suptitle("Curvas de Aprendizaje", fontsize=12, fontweight="bold")
+ax1.plot(epocas_eje, historial_perdida, "o-", color="#E74C3C", label="Loss Train")
+ax1.plot(epocas_eje, historial_perdida_test, "s--", color="#E67E22", label="Loss Test")
+ax1.set_title("Pérdida")
+ax1.set_xlabel("Época")
+ax1.legend()
+ax1.grid(True, alpha=0.3)
+
+ax2.plot(
+    epocas_eje,
+    [a * 100 for a in historial_exactitud],
+    "o-",
+    color="#2ECC71",
+    label="Acc Train",
+)
+ax2.plot(
+    epocas_eje,
+    [a * 100 for a in historial_exactitud_test],
+    "s--",
+    color="#27AE60",
+    label="Acc Test",
+)
+ax2.set_title("Exactitud (%)")
+ax2.set_xlabel("Época")
+ax2.legend()
+ax2.grid(True, alpha=0.3)
+
+plt.tight_layout()
+fig1.savefig("curvas_aprendizaje.png", dpi=150, bbox_inches="tight")
+print("Figura 1 guardada: curvas_aprendizaje.png")
+plt.close(fig1)
+
+# FIGURA 2: MATRIZ DE CONFUSIÓN
+fig2, ax3 = plt.subplots(figsize=(7, 6))
+im = ax3.imshow(matriz_conf, interpolation="nearest", cmap="Blues")
 fig2.colorbar(im, ax=ax3)
 
-# Etiquetas de ejes
 ax3.set_xticks(range(num_clases))
 ax3.set_yticks(range(num_clases))
-ax3.set_xticklabels([str(i) for i in range(num_clases)])
-ax3.set_yticklabels([str(i) for i in range(num_clases)])
-ax3.set_xlabel('Dígito PREDICHO por la red', fontsize=12)
-ax3.set_ylabel('Dígito REAL (etiqueta verdadera)', fontsize=12)
-ax3.set_title('Matriz de Confusión — 10 clases (dígitos 0-9)', fontsize=13, fontweight='bold')
+ax3.set_xlabel("Dígito PREDICHO", fontsize=10)
+ax3.set_ylabel("Dígito REAL", fontsize=10)
+ax3.set_title("Matriz de Confusión", fontsize=12, fontweight="bold")
 
-# Número dentro de cada celda
 umbrald = matriz_conf.max() / 2.0
 for i in range(num_clases):
     for j in range(num_clases):
-        color = 'white' if matriz_conf[i, j] > umbrald else 'black'
-        ax3.text(j, i, str(matriz_conf[i, j]),
-                 ha='center', va='center', color=color, fontsize=9)
+        color = "white" if matriz_conf[i, j] > umbrald else "black"
+        ax3.text(
+            j,
+            i,
+            str(matriz_conf[i, j]),
+            ha="center",
+            va="center",
+            color=color,
+            fontsize=8,
+        )
 
 plt.tight_layout()
-plt.savefig('matriz_confusion.png', dpi=150, bbox_inches='tight')
-print("  ✔ Figura 2 guardada: matriz_confusion.png")
+fig2.savefig("matriz_confusion.png", dpi=150, bbox_inches="tight")
+print("Figura 2 guardada: matriz_confusion.png")
+plt.close(fig2)
 
-# ============================================================
-# FIGURA 3: PREDICCIONES VISUALES SOBRE IMÁGENES REALES
-# ============================================================
-# Fuente: X_test (píxeles reales del split, forma (N, 784))
-#         y_test (etiquetas reales)
-#         predicciones_finales (argmax de la red sobre X_test)
-# → Muestra 20 imágenes reales con diagnóstico: ✓ o ✗
+# FIGURA 3: PREDICCIONES VISUALES
+fig3 = plt.figure(figsize=(12, 4))
+fig3.suptitle("Predicciones de la Red", fontsize=12, fontweight="bold")
 
-fig3 = plt.figure(figsize=(16, 5))
-fig3.suptitle('Predicciones de la Red sobre Imágenes Reales del Dataset',
-              fontsize=13, fontweight='bold')
+n_mostrar_imgs = 10
+np.random.seed(99)
+indices_muestra_imgs = np.random.choice(len(X_test), n_mostrar_imgs, replace=False)
 
-n_mostrar = 20
-np.random.seed(99)  # Semilla para selección reproducible de ejemplos
-indices_muestra = np.random.choice(len(X_test), n_mostrar, replace=False)
+for i, idx in enumerate(indices_muestra_imgs):
+    ax = fig3.add_subplot(2, 5, i + 1)
+    imagen_plt = X_test[idx].reshape(28, 28)
+    ax.imshow(imagen_plt, cmap="gray")
+    ax.axis("off")
 
-for i, idx in enumerate(indices_muestra):
-    ax = fig3.add_subplot(2, 10, i + 1)
-
-    # X_test está aplanado (784,) → lo remodelamos a (28, 28) para mostrar
-    imagen = X_test[idx].reshape(28, 28)
-    ax.imshow(imagen, cmap='gray')
-    ax.axis('off')
-
-    etiqueta_real  = y_test[idx]
-    etiqueta_pred  = predicciones_finales[idx]
-    es_correcto    = etiqueta_real == etiqueta_pred
-
-    # Título: verde si acertó, rojo si falló
-    color_titulo = '#27AE60' if es_correcto else '#E74C3C'
-    simbolo      = '✓' if es_correcto else '✗'
-    ax.set_title(f'R:{etiqueta_real} P:{etiqueta_pred} {simbolo}',
-                 color=color_titulo, fontsize=8, fontweight='bold')
+    etiqueta_real_plt = y_test[idx]
+    etiqueta_pred_plt = predicciones_finales[idx]
+    es_correcto_plt = etiqueta_real_plt == etiqueta_pred_plt
+    color_titulo = "#27AE60" if es_correcto_plt else "#E74C3C"
+    simbolo_plt = "✓" if es_correcto_plt else "✗"
+    ax.set_title(
+        f"R:{etiqueta_real_plt} P:{etiqueta_pred_plt} {simbolo_plt}",
+        color=color_titulo,
+        fontsize=8,
+        fontweight="bold",
+    )
 
 plt.tight_layout()
-plt.savefig('predicciones_visuales.png', dpi=150, bbox_inches='tight')
-print("  ✔ Figura 3 guardada: predicciones_visuales.png")
-
-# Mostramos las 3 figuras simultáneamente al final
-plt.show()
+fig3.savefig("predicciones_visuales.png", dpi=150, bbox_inches="tight")
+print("Figura 3 guardada: predicciones_visuales.png")
+plt.close(fig3)
 
 print("\n" + "=" * 60)
-print("  Análisis visual completado. 3 gráficos generados:")
-print("    • curvas_aprendizaje.png")
-print("    • matriz_confusion.png")
-print("    • predicciones_visuales.png")
+print("  Proceso completado.")
 print("=" * 60)
