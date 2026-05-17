@@ -4,18 +4,15 @@ filepath = r'd:\UTA\7mo Semestre\IA\mnist\red_neuronal_mnist.py'
 with open(filepath, 'r', encoding='utf-8') as f:
     content = f.read()
 
+# Busca el bloque de visualización ASCII y lo reemplaza con la versión final
 viz_ascii_start = content.find('--- Visualización ASCII')
 if viz_ascii_start != -1:
-    # go back to the print statement
     viz_ascii_start = content.rfind('print', 0, viz_ascii_start)
-    
     content = content[:viz_ascii_start]
-    
+
     new_end = """# ---------------------------------------------------------------------------
-# PARTE A: MÉTRICAS FINALES Y RESUMEN (LOGS EN TERMINAL)
+# PARTE A: MÉTRICAS FINALES Y RESUMEN
 # ---------------------------------------------------------------------------
-# Probabilidad de que salga bien: exactitud_final
-# Probabilidad de error testeo vs entrenamiento
 error_testeo = (1.0 - exactitud_final) * 100
 error_entrenamiento = (1.0 - historial_exactitud[-1]) * 100
 
@@ -37,12 +34,12 @@ else:
 print("=" * 60)
 
 # ---------------------------------------------------------------------------
-# PARTE B: GENERACIÓN Y EXPORTACIÓN DE IMÁGENES (.PNG) EXTERNAS
+# PARTE B: EXPORTACIÓN DE IMÁGENES PNG
 # ---------------------------------------------------------------------------
 print("\\n--- Generando y guardando imágenes PNG externamente ---")
 epocas_eje = list(range(1, EPOCHS + 1))
 
-# FIGURA 1: CURVAS DE APRENDIZAJE
+# Figura 1: curvas de aprendizaje
 fig1, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
 fig1.suptitle("Curvas de Aprendizaje", fontsize=12, fontweight="bold")
 ax1.plot(epocas_eje, historial_perdida, "o-", color="#E74C3C", label="Loss Train")
@@ -64,7 +61,7 @@ fig1.savefig("curvas_aprendizaje.png", dpi=150, bbox_inches="tight")
 print("  ✔ Figura 1 guardada: curvas_aprendizaje.png")
 plt.close(fig1)
 
-# FIGURA 2: MATRIZ DE CONFUSIÓN
+# Figura 2: matriz de confusión como heatmap
 fig2, ax3 = plt.subplots(figsize=(7, 6))
 im = ax3.imshow(matriz_conf, interpolation="nearest", cmap="Blues")
 fig2.colorbar(im, ax=ax3)
@@ -86,7 +83,7 @@ fig2.savefig("matriz_confusion.png", dpi=150, bbox_inches="tight")
 print("  ✔ Figura 2 guardada: matriz_confusion.png")
 plt.close(fig2)
 
-# FIGURA 3: PREDICCIONES VISUALES
+# Figura 3: muestra 10 imágenes con etiqueta real vs predicha
 fig3 = plt.figure(figsize=(12, 4))
 fig3.suptitle("Predicciones de la Red", fontsize=12, fontweight="bold")
 
@@ -117,7 +114,7 @@ print("  Proceso completado con éxito.")
 print("=" * 60)
 """
     content += new_end
-    
+
     with open(filepath, 'w', encoding='utf-8') as f:
         f.write(content)
     print('File modified successfully.')
