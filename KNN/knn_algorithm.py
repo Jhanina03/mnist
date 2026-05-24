@@ -90,26 +90,42 @@ class MNISTData:
 class WhiteBoxKNN:
     """KNN hecho a mano: distancia, vecinos, votos y probabilidad."""
 
-    def __init__(self, k=5):
+    def __init__(self, k=5, metric="euclidean"):
         self.k = k
+        self.metric = metric
         self.x_train = None
         self.y_train = None
         self.train_squared_norms = None
+        self.train_norms = None
+        self.k_candidates = []
+        self.k_validation_scores = {}
 
     def fit(self, x_train, y_train):
         """KNN no ajusta pesos; solo guarda los ejemplos conocidos."""
         self.x_train = np.asarray(x_train, dtype=np.float32)
         self.y_train = np.asarray(y_train, dtype=int)
         self.train_squared_norms = np.sum(self.x_train * self.x_train, axis=1)
+        self.train_norms = np.sqrt(self.train_squared_norms)
         print_header("PASO 2: guardar ejemplos para KNN")
         print(f"  Ejemplos guardados: {len(self.x_train)}")
         print(f"  k inicial         : {self.k}")
+        print(f"  Metrica           : {self.metric}")
 
-    def distances_to(self, query):
-        """Calcula distancia euclidiana real en las 784 dimensiones."""
-        differences = self.x_train - query
-        squared_distances = np.sum(differences * differences, axis=1)
-        return np.sqrt(squared_distances)
+    def distances_to(self, query, metric=None):
+        """Calcula distancia (euclidiana, manhattan o coseno) en las 784 dimensiones."""
+        if metric is None:
+            metric = self.metric
+        if metric == "euclidean":
+            diff = self.x_train - query
+            return np.sqrt(np.sum(diff * diff, axis=1))
+        elif metric == "manhattan":
+            return np.sum(np.abs(self.x_train - query), axis=1)
+        elif metric == "cosine":
+            dot = self.x_train @ query
+            norm_query = float(np.linalg.norm(query))
+            return 1.0 - dot / (self.train_norms * norm_query + 1e-8)
+        else:
+            raise ValueError(f"Metrica desconocida: {metric}. Use euclidean, manhattan o cosine.")
 
     def neighbors_for(self, query, k=None):
         """Ordena las distancias y toma los k ejemplos mas cercanos."""
@@ -155,7 +171,7 @@ class WhiteBoxKNN:
         return self.predict_from_neighbors(neighbor_indices, neighbor_distances, k)
 
     def nearest_neighbors_many(self, x_data, k, batch_size=256):
-        """Calcula vecinos para muchas imagenes sin repetir trabajo innecesario."""
+        """Calcula vecinos para muchas imagenes usando la metrica configurada."""
         x_data = np.asarray(x_data, dtype=np.float32)
         all_indices = []
         all_distances = []
@@ -163,16 +179,15 @@ class WhiteBoxKNN:
         for start in range(0, len(x_data), batch_size):
             end = min(start + batch_size, len(x_data))
             batch = x_data[start:end]
-            squared_distances = self._squared_distances_batch(batch)
+            distances = self._distances_batch(batch)
 
             # Solo nos interesan los k mas cercanos, no ordenar todos los ejemplos.
-            neighbor_indices = np.argpartition(squared_distances, kth=k - 1, axis=1)[:, :k]
-            neighbor_squared = np.take_along_axis(squared_distances, neighbor_indices, axis=1)
-            order = np.argsort(neighbor_squared, axis=1)
+            neighbor_indices = np.argpartition(distances, kth=k - 1, axis=1)[:, :k]
+            neighbor_dists = np.take_along_axis(distances, neighbor_indices, axis=1)
+            order = np.argsort(neighbor_dists, axis=1)
 
             sorted_indices = np.take_along_axis(neighbor_indices, order, axis=1)
-            sorted_squared = np.take_along_axis(neighbor_squared, order, axis=1)
-            sorted_distances = np.sqrt(np.maximum(sorted_squared, 0.0))
+            sorted_distances = np.take_along_axis(neighbor_dists, order, axis=1)
 
             all_indices.append(sorted_indices)
             all_distances.append(sorted_distances)
@@ -204,11 +219,52 @@ class WhiteBoxKNN:
         return predictions, confidences
 
     def _squared_distances_batch(self, batch):
-        """Calcula ||x-y||^2 para un lote contra todo train."""
+        """Calcula ||x-y||^2 para un lote contra todo train (optimizacion euclidiana)."""
         batch_squared_norms = np.sum(batch * batch, axis=1, keepdims=True)
         dot_products = batch @ self.x_train.T
         squared_distances = batch_squared_norms + self.train_squared_norms[None, :] - 2.0 * dot_products
         return np.maximum(squared_distances, 0.0)
+
+    def _distances_batch(self, batch):
+        """Calcula distancias para un lote usando la metrica configurada."""
+        if self.metric == "euclidean":
+            return np.sqrt(self._squared_distances_batch(batch))
+        elif self.metric == "manhattan":
+            n_batch = len(batch)
+            n_train = len(self.x_train)
+            distances = np.zeros((n_batch, n_train), dtype=np.float32)
+            for i in range(n_batch):
+                distances[i] = np.sum(np.abs(self.x_train - batch[i]), axis=1)
+            return distances
+        elif self.metric == "cosine":
+            dot_products = batch @ self.x_train.T
+            norm_batch = np.linalg.norm(batch, axis=1, keepdims=True)
+            return 1.0 - dot_products / (norm_batch * self.train_norms[None, :] + 1e-8)
+        else:
+            raise ValueError(f"Metrica desconocida: {self.metric}")
+
+    def class_distances(self, query):
+        """Distancia del query al prototipo (promedio) de cada clase.
+
+        Muestra que tan diferente es la imagen nueva de cada digito en promedio.
+        Un valor menor indica mayor similitud con esa clase.
+        """
+        result = {}
+        for clase in range(10):
+            mask = self.y_train == clase
+            prototype = np.mean(self.x_train[mask], axis=0)
+            if self.metric == "euclidean":
+                dist = float(np.linalg.norm(query - prototype))
+            elif self.metric == "manhattan":
+                dist = float(np.sum(np.abs(query - prototype)))
+            elif self.metric == "cosine":
+                dot = float(query @ prototype)
+                norm = np.linalg.norm(query) * np.linalg.norm(prototype)
+                dist = 1.0 - dot / (norm + 1e-8)
+            else:
+                raise ValueError(f"Metrica desconocida: {self.metric}")
+            result[clase] = dist
+        return result
 
     def _break_tie(self, neighbor_labels, neighbor_distances, tied_digits):
         """Si hay empate de votos, gana la clase con vecinos mas cercanos."""
@@ -230,22 +286,54 @@ def choose_best_k(model, x_validation, y_validation, k_values):
     best_k = None
     best_accuracy = -1
     max_k = max(k_values)
+    validation_scores = {}
 
+    model.k_candidates = list(k_values)
+    model.k_validation_scores = {}
+    print(f"  Valores candidatos de k: {', '.join(str(k) for k in k_values)}")
     print("  Calculando vecinos de validacion una sola vez...")
     neighbor_indices, neighbor_distances = model.nearest_neighbors_many(x_validation, max_k)
 
     for k in k_values:
         predictions, _ = model.predict_from_neighbors(neighbor_indices, neighbor_distances, k)
         accuracy = np.mean(predictions == y_validation)
+        validation_scores[k] = float(accuracy)
         print(f"  k={k:<2d} -> exactitud validacion: {accuracy * 100:6.2f}%")
 
-        if accuracy > best_accuracy:
+        tied_with_best = np.isclose(accuracy, best_accuracy)
+        if accuracy > best_accuracy or (tied_with_best and (best_k is None or k > best_k)):
             best_k = k
             best_accuracy = accuracy
 
     model.k = best_k
-    print(f"  k elegido: {best_k}")
+    model.k_validation_scores = validation_scores
+    print(f"  k elegido: {best_k} con {best_accuracy * 100:.2f}% en validacion")
     return best_k
+
+
+def compare_metrics(x_train, y_train, x_validation, y_validation, k, metrics=None):
+    """Prueba euclidean, manhattan y cosine en validacion para elegir la mejor metrica.
+
+    Entrena un modelo temporal por cada metrica y compara la exactitud.
+    Util para justificar academicamente la eleccion de distancia.
+    """
+    if metrics is None:
+        metrics = ["euclidean", "manhattan", "cosine"]
+
+    print_header("COMPARACION DE METRICAS DE DISTANCIA")
+    results = {}
+
+    for metric in metrics:
+        temp_model = WhiteBoxKNN(k=k, metric=metric)
+        temp_model.fit(x_train, y_train)
+        predictions, _ = temp_model.predict_many(x_validation, k)
+        accuracy = float(np.mean(predictions == y_validation))
+        results[metric] = accuracy
+        print(f"  {metric:<12}: exactitud validacion = {accuracy * 100:.2f}%")
+
+    best_metric = max(results, key=results.get)
+    print(f"\n  Metrica recomendada: {best_metric} ({results[best_metric] * 100:.2f}%)")
+    return results, best_metric
 
 
 def evaluate_model(model, x_test, y_test):

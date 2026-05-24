@@ -3,13 +3,12 @@
 import argparse
 from pathlib import Path
 
-import numpy as np
-
-from knn_algorithm import MNISTData, WhiteBoxKNN, choose_best_k, evaluate_model
+from knn_algorithm import MNISTData, WhiteBoxKNN, choose_best_k, evaluate_model, compare_metrics
 from knn_interface import LiveKNNViewer, clean_distance_reports
 
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
+DEFAULT_K_VALUES = [1, 3, 5, 7, 9]
 
 
 def parse_k_values(text):
@@ -28,7 +27,12 @@ def build_parser():
     parser.add_argument("--train-per-class", type=int, default=500)
     parser.add_argument("--validation-per-class", type=int, default=100)
     parser.add_argument("--test-per-class", type=int, default=100)
-    parser.add_argument("--k-values", type=parse_k_values, default=[9])
+    parser.add_argument(
+        "--k-values",
+        type=parse_k_values,
+        default=DEFAULT_K_VALUES,
+        help="Valores de k a comparar en validacion (default: 1,3,5,7,9).",
+    )
     parser.add_argument("--delay", type=float, default=1.8)
     parser.add_argument("--cases", type=int, default=20)
     parser.add_argument("--distance-lines", type=int, default=28)
@@ -36,6 +40,18 @@ def build_parser():
     parser.add_argument("--auto", action="store_true")
     parser.add_argument("--show-confusion", action="store_true")
     parser.add_argument("--no-window", action="store_true")
+    parser.add_argument(
+        "--metric",
+        type=str,
+        default="euclidean",
+        choices=["euclidean", "manhattan", "cosine"],
+        help="Metrica de distancia a usar (default: euclidean).",
+    )
+    parser.add_argument(
+        "--compare-metrics",
+        action="store_true",
+        help="Compara euclidean, manhattan y cosine en validacion antes de entrenar.",
+    )
     return parser
 
 
@@ -58,16 +74,27 @@ def main():
     """Ejecuta toda la practica."""
     args = build_parser().parse_args()
     validate_arguments(args)
-    np.random.seed(args.seed)
+    k_candidates = sorted(set(args.k_values))
     clean_distance_reports(OUTPUT_DIR)
 
     data_loader = MNISTData(seed=args.seed)
     data = data_loader.load(args.train_per_class, args.validation_per_class, args.test_per_class)
 
-    model = WhiteBoxKNN(k=args.k_values[0])
+    # Comparar metricas si el usuario lo pide; si no, usa la elegida por --metric.
+    metric = args.metric
+    if args.compare_metrics:
+        _, metric = compare_metrics(
+            data["x_train"],
+            data["y_train"],
+            data["x_validation"],
+            data["y_validation"],
+            k=max(k_candidates),
+        )
+
+    model = WhiteBoxKNN(k=max(k_candidates), metric=metric)
     model.fit(data["x_train"], data["y_train"])
 
-    best_k = choose_best_k(model, data["x_validation"], data["y_validation"], args.k_values)
+    best_k = choose_best_k(model, data["x_validation"], data["y_validation"], k_candidates)
     _, _, matrix, accuracy = evaluate_model(model, data["x_test"], data["y_test"])
 
     if not args.no_window:
@@ -75,6 +102,7 @@ def main():
             model=model,
             data=data,
             k=best_k,
+            k_values=k_candidates,
             delay=args.delay,
             distance_lines=args.distance_lines,
             matrix=matrix,

@@ -32,6 +32,7 @@ Por defecto usa:
 - 5.000 imagenes para train;
 - 1.000 imagenes para validacion;
 - 1.000 imagenes para test.
+- compara `k=1,3,5,7,9` en validacion y escoge el mejor.
 
 MNIST completo tiene 70.000 imagenes, pero KNN manual compara cada imagen nueva
 contra todos los ejemplos guardados. Usar todo el dataset puede ser muy pesado
@@ -42,6 +43,12 @@ primero busca vecinos con el `k` mas grande y luego reutiliza esos mismos vecino
 para evaluar `k=1`, `k=3`, `k=5`, etc. Esto permite comparar valores de k sin repetir
 el calculo completo de distancias.
 
+Si quieres probar otros valores de `k`, puedes pasarlos separados por comas:
+
+```bash
+python KNN/knn_mnist_academic.py --k-values 1,3,5,7,9,11
+```
+
 La ventana muestra caso por caso:
 
 - una muestra de puntos de entrenamiento proyectados a 3D con PCA para mantener la ventana fluida;
@@ -51,6 +58,7 @@ La ventana muestra caso por caso:
 - radio visual hasta el vecino mas lejano de los k usados;
 - la imagen 28x28 consultada;
 - probabilidades por voto;
+- tabla de exactitud de validacion para cada `k` candidato y el `k` elegido;
 - texto con distancias ordenadas;
 - botones `Anterior`, `Siguiente`, `Auto` y `Matriz de confusion`.
 
