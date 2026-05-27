@@ -8,10 +8,8 @@ from knn_algorithm import (
     evaluate_model,
     compare_metrics,
 )
-from knn_interface import LiveKNNViewer, clean_distance_reports
+from knn_interface import LiveKNNViewer
 
-
-OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 DEFAULT_K_VALUES = [1, 3, 5, 7, 9, 12]
 
 
@@ -28,9 +26,24 @@ def parse_k_values(text):
 def build_parser():
     """Argumentos utiles para cambiar tamano y velocidad sin tocar el codigo."""
     parser = argparse.ArgumentParser(description="KNN manual e interactivo para MNIST.")
-    parser.add_argument("--train-size", type=int, default=-1, help="Total de imágenes de entrenamiento (-1 para usar todas).")
-    parser.add_argument("--val-size", type=int, default=-1, help="Total de imágenes de validación (-1 para usar todas las restantes).")
-    parser.add_argument("--test-size", type=int, default=-1, help="Total de imágenes de test (-1 para usar todas).")
+    parser.add_argument(
+        "--train-size",
+        type=int,
+        default=-1,
+        help="Total de imágenes de entrenamiento (-1 para usar todas).",
+    )
+    parser.add_argument(
+        "--val-size",
+        type=int,
+        default=-1,
+        help="Total de imágenes de validación (-1 para usar todas las restantes).",
+    )
+    parser.add_argument(
+        "--test-size",
+        type=int,
+        default=-1,
+        help="Total de imágenes de test (-1 para usar todas).",
+    )
     parser.add_argument(
         "--k-values",
         type=parse_k_values,
@@ -41,7 +54,7 @@ def build_parser():
     parser.add_argument(
         "--metric",
         type=str,
-        default="cosine",
+        default="euclidean",
         choices=["euclidean", "manhattan", "cosine"],
         help="Metrica de distancia a usar (default: euclidean).",
     )
@@ -61,19 +74,23 @@ def validate_arguments(args):
 def main():
     """Ejecuta toda la practica."""
     args = build_parser().parse_args()
-    
+
     if args.metric == "manhattan":
-        if args.train_size == -1: args.train_size = 2000
-        if args.val_size == -1: args.val_size = 500
-        if args.test_size == -1: args.test_size = 500
-        print("\n" + "="*80)
-        print("NOTA: Para evitar que el cálculo de Manhattan se demore horas en Python puro,")
+        if args.train_size == -1:
+            args.train_size = 2000
+        if args.val_size == -1:
+            args.val_size = 500
+        if args.test_size == -1:
+            args.test_size = 500
+        print("\n" + "=" * 80)
+        print(
+            "NOTA: Para evitar que el cálculo de Manhattan se demore horas en Python puro,"
+        )
         print("se redujo el tamaño del dataset automáticamente.")
-        print("="*80 + "\n")
-        
+        print("=" * 80 + "\n")
+
     validate_arguments(args)
     k_candidates = sorted(set(args.k_values))
-    clean_distance_reports(OUTPUT_DIR)
 
     data_loader = MNISTData(seed=args.seed)
     data = data_loader.load(args.train_size, args.val_size, args.test_size)
@@ -103,7 +120,7 @@ def main():
         k=best_k,
         k_values=k_candidates,
         matrix=matrix,
-        accuracy=accuracy
+        accuracy=accuracy,
     )
     # Pasar todos los tests que haya en data["x_test"]
     viewer.run(len(data["x_test"]))
