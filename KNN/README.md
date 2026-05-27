@@ -3,7 +3,7 @@
 Esta versión separa el proyecto en tres archivos simples:
 
 ```text
-KNN/knn_mnist_academic.py   -> ejecuta la práctica principal
+KNN/knn_mnist_main.py       -> ejecuta la práctica principal
 KNN/knn_algorithm.py        -> contiene los cálculos de KNN
 KNN/knn_interface.py        -> contiene la ventana minimalista de visualización
 ```
@@ -21,7 +21,7 @@ La parte importante sigue siendo la filosofía de **caja blanca**:
 Para correr la prueba completa (usando por defecto **todo** el dataset de MNIST):
 
 ```bash
-python KNN/knn_mnist_academic.py
+python KNN/knn_mnist_main.py
 ```
 
 Por defecto procesa:
@@ -36,7 +36,7 @@ Por defecto procesa:
 Si solo quieres ver cómo funciona la interfaz rápidamente o probar la arquitectura, puedes limitar explícitamente el tamaño de los datos:
 
 ```bash
-python KNN/knn_mnist_academic.py --train-size 5000 --val-size 1000 --test-size 50
+python KNN/knn_mnist_main.py --train-size 5000 --val-size 1000 --test-size 50
 ```
 
 *Nota: Un número en `-1` (que es el valor predeterminado) le indica al algoritmo que debe usar todos los datos disponibles de MNIST.*
@@ -46,7 +46,7 @@ python KNN/knn_mnist_academic.py --train-size 5000 --val-size 1000 --test-size 5
 El sistema compara múltiples valores de `K` sobre los datos de validación para escoger automáticamente el que tenga mejor rendimiento antes de presentarte la interfaz:
 
 ```bash
-python KNN/knn_mnist_academic.py --k-values 1,3,5,7,9,11
+python KNN/knn_mnist_main.py --k-values 1,3,5,7,9,11
 ```
 
 ## La Interfaz

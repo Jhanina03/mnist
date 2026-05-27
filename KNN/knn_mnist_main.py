@@ -1,5 +1,4 @@
 import argparse
-from pathlib import Path
 
 from knn_algorithm import (
     MNISTData,
