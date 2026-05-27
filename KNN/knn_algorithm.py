@@ -1,10 +1,3 @@
-"""
-Logica del KNN para MNIST.
-
-Aqui va lo matematico: carga de datos, distancias, vecinos, votos,
-probabilidades, seleccion de k y matriz de confusion.
-"""
-
 import os
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
@@ -20,20 +13,29 @@ class MNISTData:
     def __init__(self, seed=42):
         self.rng = np.random.default_rng(seed)
 
-    def load(self, train_per_class, validation_per_class, test_per_class):
+    def load(self, train_size=-1, val_size=-1, test_size=-1):
         """Devuelve datos planos para calcular y datos 28x28 para mostrar."""
-        print_header("PASO 1: cargar MNIST")
+        print_header("PASO 1: cargar MNIST completo")
         (x_train_raw, y_train_raw), (x_test_raw, y_test_raw) = keras.datasets.mnist.load_data()
 
         x_train_flat = self._normalize_and_flatten(x_train_raw)
         x_test_flat = self._normalize_and_flatten(x_test_raw)
 
-        train_idx, validation_idx = self._train_validation_indices(
-            y_train_raw,
-            train_per_class,
-            validation_per_class,
-        )
-        test_idx = self._balanced_indices(y_test_raw, test_per_class)
+        # Usar todo el dataset (60,000 train -> 50,000 train + 10,000 validación) o limitarlo según parámetro
+        indices = np.arange(len(x_train_raw))
+        self.rng.shuffle(indices)
+        
+        t_size = 50000 if train_size == -1 else train_size
+        v_size = 10000 if val_size == -1 else val_size
+        ts_size = len(x_test_raw) if test_size == -1 else test_size
+        
+        train_idx = indices[:t_size]
+        validation_idx = indices[t_size : t_size + v_size]
+        
+        test_indices = np.arange(len(x_test_raw))
+        if ts_size < len(x_test_raw):
+            self.rng.shuffle(test_indices)
+        test_idx = test_indices[:ts_size]
 
         data = {
             "x_train": x_train_flat[train_idx],
@@ -162,15 +164,15 @@ class WhiteBoxKNN:
             "distances": distances,
         }
 
-    def predict_many(self, x_data, k=None):
+    def predict_many(self, x_data, k=None, progress_callback=None):
         """Predice varias imagenes reutilizando vecinos calculados por lotes."""
         if k is None:
             k = self.k
 
-        neighbor_indices, neighbor_distances = self.nearest_neighbors_many(x_data, k)
+        neighbor_indices, neighbor_distances = self.nearest_neighbors_many(x_data, k, progress_callback=progress_callback)
         return self.predict_from_neighbors(neighbor_indices, neighbor_distances, k)
 
-    def nearest_neighbors_many(self, x_data, k, batch_size=256):
+    def nearest_neighbors_many(self, x_data, k, batch_size=256, progress_callback=None):
         """Calcula vecinos para muchas imagenes usando la metrica configurada."""
         x_data = np.asarray(x_data, dtype=np.float32)
         all_indices = []
@@ -191,6 +193,9 @@ class WhiteBoxKNN:
 
             all_indices.append(sorted_indices)
             all_distances.append(sorted_distances)
+            
+            if progress_callback:
+                progress_callback()
 
         return np.vstack(all_indices), np.vstack(all_distances)
 
@@ -336,11 +341,11 @@ def compare_metrics(x_train, y_train, x_validation, y_validation, k, metrics=Non
     return results, best_metric
 
 
-def evaluate_model(model, x_test, y_test):
+def evaluate_model(model, x_test, y_test, progress_callback=None):
     """Calcula exactitud y matriz de confusion sin usar metricas externas."""
     print_header("PASO 4: evaluar en test")
     print("  Calculando vecinos de prueba por lotes...")
-    predictions, confidences = model.predict_many(x_test, model.k)
+    predictions, confidences = model.predict_many(x_test, model.k, progress_callback=progress_callback)
     matrix = confusion_matrix(y_test, predictions)
     accuracy = np.trace(matrix) / np.sum(matrix)
 
