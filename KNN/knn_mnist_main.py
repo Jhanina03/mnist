@@ -67,7 +67,10 @@ def build_parser():
 
 def validate_arguments(args):
     """Revisa lo basico para que el experimento no arranque con datos absurdos."""
-    pass
+    for size_name in ["train_size", "val_size", "test_size"]:
+        val = getattr(args, size_name)
+        if val != -1 and val <= 0:
+            raise ValueError(f"El argumento {size_name} debe ser -1 o un número mayor que 0. Valor actual: {val}")
 
 
 def main():
